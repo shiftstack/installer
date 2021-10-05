@@ -2,6 +2,7 @@
 package openstack
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gophercloud/utils/openstack/clientconfig"
@@ -9,13 +10,35 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	"github.com/openshift/installer/pkg/asset/installconfig"
+	"github.com/openshift/installer/pkg/rhcos"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/openstack"
 	openstackdefaults "github.com/openshift/installer/pkg/types/openstack/defaults"
 )
 
+func MachineSets(
+	_ context.Context,
+	installConfig *installconfig.InstallConfig,
+	clusterID *installconfig.ClusterID,
+	rhcosImage string,
+	pool types.MachinePool,
+	role string,
+	userDataSecret string,
+	clientOpts *clientconfig.ClientOpts,
+) ([]*clusterapi.MachineSet, error) {
+	mpool := defaultOpenStackMachinePoolPlatform()
+	mpool.Set(installConfig.Config.Platform.OpenStack.DefaultMachinePlatform)
+	mpool.Set(pool.Platform.OpenStack)
+	pool.Platform.OpenStack = &mpool
+
+	imageName, _ := rhcos.GenerateOpenStackImageName(rhcosImage, clusterID.InfraID)
+
+	return machineSets(clusterID.InfraID, installConfig.Config, &pool, imageName, "worker", "worker-user-data", nil)
+}
+
 // MachineSets returns a list of machinesets for a machinepool.
-func MachineSets(clusterID string, config *types.InstallConfig, pool *types.MachinePool, osImage, role, userDataSecret string, clientOpts *clientconfig.ClientOpts) ([]*clusterapi.MachineSet, error) {
+func machineSets(clusterID string, config *types.InstallConfig, pool *types.MachinePool, osImage, role, userDataSecret string, clientOpts *clientconfig.ClientOpts) ([]*clusterapi.MachineSet, error) {
 	if configPlatform := config.Platform.Name(); configPlatform != openstack.Name {
 		return nil, fmt.Errorf("non-OpenStack configuration: %q", configPlatform)
 	}
@@ -99,4 +122,10 @@ func MachineSets(clusterID string, config *types.InstallConfig, pool *types.Mach
 	}
 
 	return machinesets, nil
+}
+
+func defaultOpenStackMachinePoolPlatform() openstack.MachinePool {
+	return openstack.MachinePool{
+		Zones: []string{""},
+	}
 }
