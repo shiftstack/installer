@@ -36,8 +36,15 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 				Kind: "Secret",
 				Name: clusterID.InfraID + "-cloud-config",
 			},
+			// We disable management of most networking resources since either
+			// we (the installer) will create them, or the user will have
+			// pre-created them as part of a "Bring Your Own Network (BYON)"
+			// configuration
 			ManagedSecurityGroups:      false,
-			DisableAPIServerFloatingIP: false,
+			DisableAPIServerFloatingIP: true,
+			// TODO(stephenfin): update when we support dual-stack (there are
+			// potentially *two* IPs here)
+			APIServerFixedIP:           openstackInstallConfig.APIVIPs[0],
 			DNSNameservers:             openstackInstallConfig.ExternalDNS,
 			ExternalNetworkID:          openstackInstallConfig.ExternalNetwork,
 		},
