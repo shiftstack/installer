@@ -125,13 +125,10 @@ func generateMachineSpec(clusterID string, platform *openstack.Platform, mpool *
 	}
 
 	if platform.ControlPlanePort != nil {
-		networkID := platform.ControlPlanePort.Network.ID
-
 		port := capo.PortOpts{}
-
 		port.Network = &capo.NetworkFilter{
 			Name: platform.ControlPlanePort.Network.Name,
-			ID:   networkID,
+			ID:   platform.ControlPlanePort.Network.ID,
 		}
 
 		var fixedIPs []capo.FixedIP
@@ -153,7 +150,9 @@ func generateMachineSpec(clusterID string, platform *openstack.Platform, mpool *
 			FixedIPs: []capo.FixedIP{
 				{
 					Subnet: &capo.SubnetFilter{
-						Name: fmt.Sprintf("%s-nodes", clusterID),
+						// NOTE(mandre) the format of the subnet name changes when letting CAPI create it.
+						// So solely rely on tags for now.
+						// Name: fmt.Sprintf("%s-nodes", clusterID),
 						Tags: fmt.Sprintf("openshiftClusterID=%s", clusterID),
 					},
 				},
@@ -175,7 +174,8 @@ func generateMachineSpec(clusterID string, platform *openstack.Platform, mpool *
 
 	securityGroups := []capo.SecurityGroupFilter{
 		{
-			Name: fmt.Sprintf("%s-%s", clusterID, role),
+			// Bootstrap and Master share the same security group
+			Name: fmt.Sprintf("%s-master", clusterID),
 		},
 	}
 

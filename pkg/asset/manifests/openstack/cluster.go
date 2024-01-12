@@ -1,6 +1,7 @@
 package openstack
 
 import (
+	"fmt"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
@@ -44,9 +45,12 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 			DisableAPIServerFloatingIP: true,
 			// TODO(stephenfin): update when we support dual-stack (there are
 			// potentially *two* IPs here)
-			APIServerFixedIP:           openstackInstallConfig.APIVIPs[0],
-			DNSNameservers:             openstackInstallConfig.ExternalDNS,
-			ExternalNetworkID:          openstackInstallConfig.ExternalNetwork,
+			APIServerFixedIP:  openstackInstallConfig.APIVIPs[0],
+			DNSNameservers:    openstackInstallConfig.ExternalDNS,
+			ExternalNetworkID: openstackInstallConfig.ExternalNetwork,
+			Tags: []string{
+				fmt.Sprintf("openshiftClusterID=%s", clusterID.InfraID),
+			},
 		},
 	}
 	if openstackInstallConfig.ControlPlanePort != nil {
@@ -56,14 +60,13 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 		openStackCluster.Spec.Subnet.ID = openstackInstallConfig.ControlPlanePort.FixedIPs[0].Subnet.ID
 		openStackCluster.Spec.Subnet.Name = openstackInstallConfig.ControlPlanePort.FixedIPs[0].Subnet.Name
 	} else {
-		// TODO(maysa): verify if MachineNetwork is set
-		openStackCluster.Spec.NodeCIDR = installConfig.Config.Networking.MachineNetwork[0].CIDR.String()
+		openStackCluster.Spec.NodeCIDR = capiutils.CIDRFromInstallConfig(installConfig).String()
 	}
 	openStackCluster.SetGroupVersionKind(capo.GroupVersion.WithKind("OpenStackCluster"))
 
 	manifests = append(manifests, &asset.RuntimeFile{
 		Object: openStackCluster,
-		File:   asset.File{Filename: "02_openstack-cluster.yaml"},
+		File:   asset.File{Filename: "02_infra-cluster.yaml"},
 	})
 
 	cloudConfig, err := generateCloudConfig(installConfig)
