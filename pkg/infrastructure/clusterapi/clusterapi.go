@@ -29,23 +29,25 @@ import (
 	"github.com/openshift/installer/pkg/types"
 )
 
-// InfraProvider is the base implementation for provisioning cluster
+// ClusterAPIProvider is the base implementation for provisioning cluster
 // infrastructure using CAPI. Platforms should embed this struct and
 // implement:
 // .
 type InfraProvider struct {
-	CAPIInfraHelper
+	infrastructure.Provider
+
+	capiProvider Provider
 }
 
 // InitializeProvider returns a CAPI provider implementation for a specific
 // cloud platform.
-func InitializeProvider(platform CAPIInfraHelper) infrastructure.Provider {
-	return InfraProvider{platform}
+func InitializeProvider(platform Provider) infrastructure.Provider {
+	return InfraProvider{capiProvider: platform}
 }
 
 // CAPIInfraHelper provides an interface for calling functions at different
 // points of the CAPI infrastructure provisioning lifecycle.
-type CAPIInfraHelper interface {
+type Provider interface {
 	// PreProvision is called before provisioning using CAPI controllers has begun.
 	// and should be used to create dependencies needed for CAPI provisioning,
 	// such as IAM roles or policies.
@@ -69,8 +71,9 @@ type ControlPlaneAvailableInput struct {
 	InstallConfig *installconfig.InstallConfig
 }
 
+// TODO(padillon: switch to pointer receiver)
 // Provision creates cluster resources by applying CAPI manifests to a locally running control plane.
-func (c InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.File, error) {
+func (i InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.File, error) {
 	capiManifestsAsset := &capimanifests.Cluster{}
 	clusterKubeconfigAsset := &kubeconfig.AdminClient{}
 	clusterID := &installconfig.ClusterID{}
@@ -133,7 +136,7 @@ func (c InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 		ClusterID:     clusterID.InfraID,
 		InstallConfig: installConfig,
 	}
-	if err := c.PreProvision(preProvisionInput); err != nil {
+	if err := i.capiProvider.PreProvision(preProvisionInput); err != nil {
 		return fileList, fmt.Errorf("failed during pre-provisioning: %w", err)
 	}
 
@@ -219,7 +222,7 @@ func (c InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 		Cluster:       cluster,
 		InstallConfig: installConfig,
 	}
-	if err := c.ControlPlaneAvailable(controlPlaneAvailableInput); err != nil {
+	if err := i.capiProvider.ControlPlaneAvailable(controlPlaneAvailableInput); err != nil {
 		return fileList, fmt.Errorf("failed provisioning resources after control plane available: %w", err)
 	}
 
@@ -253,7 +256,7 @@ func (c InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 }
 
 // DestroyBootstrap destroys the temporary bootstrap resources.
-func (c InfraProvider) DestroyBootstrap(dir string) error {
+func (i InfraProvider) DestroyBootstrap(dir string) error {
 	metadata, err := metadata.Load(dir)
 	if err != nil {
 		return err
@@ -274,6 +277,18 @@ func (c InfraProvider) DestroyBootstrap(dir string) error {
 }
 
 // ExtractHostAddresses extracts the IPs of the bootstrap and control plane machines.
-func (c InfraProvider) ExtractHostAddresses(dir string, config *types.InstallConfig, ha *infrastructure.HostAddresses) error {
+func (i InfraProvider) ExtractHostAddresses(dir string, config *types.InstallConfig, ha *infrastructure.HostAddresses) error {
+	return nil
+}
+
+type DefaultCAPIProvider struct{}
+
+func (d DefaultCAPIProvider) PreProvision(in PreProvisionInput) error {
+	logrus.Debugf("Default PreProvision: doing nothing")
+	return nil
+}
+
+func (d DefaultCAPIProvider) ControlPlaneAvailable(in ControlPlaneAvailableInput) error {
+	logrus.Debugf("Default ControlPlaneAvailable, doing nothing")
 	return nil
 }
