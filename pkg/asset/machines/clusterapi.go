@@ -17,9 +17,14 @@ import (
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	"github.com/openshift/installer/pkg/asset/machines/aws"
+	"github.com/openshift/installer/pkg/asset/machines/openstack"
 	"github.com/openshift/installer/pkg/asset/manifests/capiutils"
 	"github.com/openshift/installer/pkg/asset/rhcos"
+	rhcosutils "github.com/openshift/installer/pkg/rhcos"
+	awstypes "github.com/openshift/installer/pkg/types/aws"
 	awsdefaults "github.com/openshift/installer/pkg/types/aws/defaults"
+	azuretypes "github.com/openshift/installer/pkg/types/azure"
+	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 )
 
 // GenerateClusterAPI generates manifests for target cluster.
@@ -30,7 +35,7 @@ func GenerateClusterAPI(ctx context.Context, installConfig *installconfig.Instal
 	pool := *ic.ControlPlane
 
 	switch ic.Platform.Name() {
-	case "aws":
+	case awstypes.Name:
 		subnets := map[string]string{}
 		if len(ic.Platform.AWS.Subnets) > 0 {
 			subnetMeta, err := installConfig.AWS.PrivateSubnets(ctx)
@@ -102,7 +107,7 @@ func GenerateClusterAPI(ctx context.Context, installConfig *installconfig.Instal
 		}
 		result.Manifests = append(result.Manifests, awsMachines...)
 
-		// TODO(vincepri): The following code is almost duplicated from aws.AWSMachines.
+		// TODO(vincepri): The following code is almost duplicated from aws.GenerateMachines.
 		// Refactor and generalize around a bootstrap pool, with a single machine and
 		// a custom openshift label to determine the bootstrap machine role, so we can
 		// delete the machine when the stage is complete.
@@ -169,7 +174,29 @@ func GenerateClusterAPI(ctx context.Context, installConfig *installconfig.Instal
 			File:   asset.File{Filename: fmt.Sprintf("10_machine_%s.yaml", bootstrapMachine.Name)},
 			Object: bootstrapMachine,
 		})
-	case "azure":
+	case azuretypes.Name:
+		// TODO: implement
+	case openstacktypes.Name:
+		mpool := defaultOpenStackMachinePoolPlatform()
+		mpool.Set(ic.Platform.OpenStack.DefaultMachinePlatform)
+		mpool.Set(pool.Platform.OpenStack)
+		pool.Platform.OpenStack = &mpool
+
+		imageName, _ := rhcosutils.GenerateOpenStackImageName(string(*rhcosImage), clusterID.InfraID)
+
+		for _, role := range []string{"master", "bootstrap"} {
+			openStackMachines, err := openstack.GenerateMachines(
+				clusterID.InfraID,
+				ic,
+				&pool,
+				imageName,
+				role,
+			)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create machine objects")
+			}
+			result.Manifests = append(result.Manifests, openStackMachines...)
+		}
 	default:
 		// TODO: support other platforms
 	}

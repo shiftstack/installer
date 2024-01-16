@@ -25,6 +25,7 @@ import (
 	"github.com/openshift/installer/pkg/types/gcp"
 	"github.com/openshift/installer/pkg/types/ibmcloud"
 	"github.com/openshift/installer/pkg/types/nutanix"
+	"github.com/openshift/installer/pkg/types/openstack"
 	"github.com/openshift/installer/pkg/types/vsphere"
 )
 
@@ -177,6 +178,22 @@ func (c *system) Run(ctx context.Context, installConfig *installconfig.InstallCo
 		// TODO
 	case nutanix.Name:
 		// TODO
+	case openstack.Name:
+		controllers = append(controllers,
+			c.getInfrastructureController(
+				&OpenStack,
+				[]string{
+					"-v=2",
+					"--metrics-bind-addr=0",
+					"--health-addr={{suggestHealthHostPort}}",
+					"--webhook-port={{.WebhookPort}}",
+					"--webhook-cert-dir={{.WebhookCertDir}}",
+				},
+				map[string]string{
+					"EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION": "true",
+				},
+			),
+		)
 	case vsphere.Name:
 		// TODO
 	default:
@@ -278,6 +295,8 @@ func (c *system) getInfrastructureController(provider *Provider, args []string, 
 	defaultManifestPath := filepath.Join(c.componentDir, fmt.Sprintf("/%s-infrastructure-components.yaml", provider.Name))
 	if _, err := os.Stat(defaultManifestPath); err == nil {
 		manifests = append(manifests, defaultManifestPath)
+	} else {
+		logrus.Infof("Failed to find manifests for provider %s at %s", provider.Name, defaultManifestPath)
 	}
 	return &controller{
 		Provider:   provider,

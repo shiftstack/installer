@@ -23,9 +23,13 @@ import (
 	"github.com/openshift/installer/pkg/asset/manifests/aws"
 	"github.com/openshift/installer/pkg/asset/manifests/azure"
 	"github.com/openshift/installer/pkg/asset/manifests/capiutils"
+	"github.com/openshift/installer/pkg/asset/manifests/openstack"
 	"github.com/openshift/installer/pkg/asset/openshiftinstall"
 	"github.com/openshift/installer/pkg/asset/rhcos"
 	"github.com/openshift/installer/pkg/clusterapi"
+	awstypes "github.com/openshift/installer/pkg/types/aws"
+	azuretypes "github.com/openshift/installer/pkg/types/azure"
+	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 )
 
 const (
@@ -86,6 +90,7 @@ func (c *Cluster) Generate(dependencies asset.Parents) error {
 			Name: capiutils.Namespace,
 		},
 	}
+	namespace.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Namespace"))
 	c.FileList = append(c.FileList, &asset.RuntimeFile{Object: namespace, File: asset.File{Filename: "000_capi-namespace.yaml"}})
 
 	cluster := &clusterv1.Cluster{
@@ -95,6 +100,7 @@ func (c *Cluster) Generate(dependencies asset.Parents) error {
 		},
 		Spec: clusterv1.ClusterSpec{},
 	}
+	cluster.SetGroupVersionKind(clusterv1.GroupVersion.WithKind("Cluster"))
 	c.FileList = append(c.FileList, &asset.RuntimeFile{Object: cluster, File: asset.File{Filename: "01_capi-cluster.yaml"}})
 
 	// Gather the ignition files, and store them in a secret.
@@ -104,45 +110,51 @@ func (c *Cluster) Generate(dependencies asset.Parents) error {
 		if err != nil {
 			return errors.Wrap(err, "unable to inject installation info")
 		}
+
+		masterSecret := corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%s", clusterID.InfraID, "master"),
+				Namespace: capiutils.Namespace,
+				Labels: map[string]string{
+					"cluster.x-k8s.io/cluster-name": clusterID.InfraID,
+				},
+			},
+			Data: map[string][]byte{
+				"format": []byte("ignition"),
+				"value":  []byte(masterIgn),
+			},
+		}
+		masterSecret.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Secret"))
+		bootstrapSecret := corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%s", clusterID.InfraID, "bootstrap"),
+				Namespace: capiutils.Namespace,
+				Labels: map[string]string{
+					"cluster.x-k8s.io/cluster-name": clusterID.InfraID,
+				},
+			},
+			Data: map[string][]byte{
+				"format": []byte("ignition"),
+				"value":  []byte(bootstrapIgn),
+			},
+		}
+		bootstrapSecret.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Secret"))
+
 		c.FileList = append(c.FileList,
 			&asset.RuntimeFile{
 				File: asset.File{Filename: "01_ignition-secret-master.yaml"},
-				Object: &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      fmt.Sprintf("%s-%s", clusterID.InfraID, "master"),
-						Namespace: capiutils.Namespace,
-						Labels: map[string]string{
-							"cluster.x-k8s.io/cluster-name": clusterID.InfraID,
-						},
-					},
-					Data: map[string][]byte{
-						"format": []byte("ignition"),
-						"value":  []byte(masterIgn),
-					},
-				},
+				Object: &masterSecret,
 			},
 			&asset.RuntimeFile{
 				File: asset.File{Filename: "01_ignition-secret-bootstrap.yaml"},
-				Object: &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      fmt.Sprintf("%s-%s", clusterID.InfraID, "bootstrap"),
-						Namespace: capiutils.Namespace,
-						Labels: map[string]string{
-							"cluster.x-k8s.io/cluster-name": clusterID.InfraID,
-						},
-					},
-					Data: map[string][]byte{
-						"format": []byte("ignition"),
-						"value":  []byte(bootstrapIgn),
-					},
-				},
+				Object: &bootstrapSecret,
 			},
 		)
 	}
 
 	var out *capiutils.GenerateClusterAssetsOutput
 	switch platform := installConfig.Config.Platform.Name(); platform {
-	case "aws":
+	case awstypes.Name:
 		// Move this somewhere else.
 		// if err := aws.PutIAMRoles(clusterID.InfraID, installConfig); err != nil {
 		// 	return errors.Wrap(err, "failed to create IAM roles")
@@ -152,11 +164,17 @@ func (c *Cluster) Generate(dependencies asset.Parents) error {
 		if err != nil {
 			return errors.Wrap(err, "failed to generate AWS manifests")
 		}
-	case "azure":
+	case azuretypes.Name:
 		var err error
 		out, err = azure.GenerateClusterAssets(installConfig, clusterID)
 		if err != nil {
-			return errors.Wrap(err, "failed to generate AWS manifests")
+			return errors.Wrap(err, "failed to generate Azure manifests")
+		}
+	case openstacktypes.Name:
+		var err error
+		out, err = openstack.GenerateClusterAssets(installConfig, clusterID)
+		if err != nil {
+			return errors.Wrap(err, "failed to generate OpenStack manifests")
 		}
 	default:
 		return fmt.Errorf("unsupported platform %q", platform)
