@@ -9,6 +9,8 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/infrastructure"
 	awsinfra "github.com/openshift/installer/pkg/infrastructure/aws"
+	"github.com/openshift/installer/pkg/infrastructure/clusterapi"
+	ospinfra "github.com/openshift/installer/pkg/infrastructure/openstack/clusterapi"
 	"github.com/openshift/installer/pkg/terraform"
 	"github.com/openshift/installer/pkg/terraform/stages/alibabacloud"
 	"github.com/openshift/installer/pkg/terraform/stages/aws"
@@ -18,7 +20,7 @@ import (
 	"github.com/openshift/installer/pkg/terraform/stages/ibmcloud"
 	"github.com/openshift/installer/pkg/terraform/stages/libvirt"
 	"github.com/openshift/installer/pkg/terraform/stages/nutanix"
-	"github.com/openshift/installer/pkg/terraform/stages/openstack"
+	openstackstage "github.com/openshift/installer/pkg/terraform/stages/openstack"
 	"github.com/openshift/installer/pkg/terraform/stages/ovirt"
 	"github.com/openshift/installer/pkg/terraform/stages/powervs"
 	"github.com/openshift/installer/pkg/terraform/stages/vsphere"
@@ -66,7 +68,10 @@ func ProviderForPlatform(platform string, fg featuregates.FeatureGate) (infrastr
 	case powervstypes.Name:
 		return terraform.InitializeProvider(powervs.PlatformStages), nil
 	case openstacktypes.Name:
-		return terraform.InitializeProvider(openstack.PlatformStages), nil
+		if fg.Enabled(configv1.FeatureGateClusterAPIInstall) {
+			return clusterapi.InitializeProvider(ospinfra.Provider{}), nil
+		}
+		return terraform.InitializeProvider(openstackstage.PlatformStages), nil
 	case ovirttypes.Name:
 		return terraform.InitializeProvider(ovirt.PlatformStages), nil
 	case vspheretypes.Name:
