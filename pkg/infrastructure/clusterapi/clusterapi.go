@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
@@ -63,22 +65,21 @@ type Provider interface {
 	ControlPlaneAvailable(in ControlPlaneAvailableInput) error
 }
 
-// PreProvisionInput collects the args to be passed to the PreProvision call.
 type PreProvisionInput struct {
 	ClusterID     string
 	InstallConfig *installconfig.InstallConfig
 }
 
-// IgnitionInput collects the args to be passed to the Ignition call.
 type IgnitionInput struct {
 	MasterIgnData, BootstrapIgnData []byte
 	InfraID                         string
 }
 
-// ControlPlaneAvailableInput collects the args to be passed to the ControlPlaneAvailable call.
 type ControlPlaneAvailableInput struct {
 	Cluster       *clusterv1.Cluster
 	InstallConfig *installconfig.InstallConfig
+	Client        client.Client
+	InfraID       string
 }
 
 // TODO(padillon: switch to pointer receiver)
@@ -195,16 +196,18 @@ func (i InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 			return fileList, err
 		}
 		if cluster == nil {
-			return fileList, fmt.Errorf("error occurred during load balancer ready check")
+			return fileList, errors.New("error occurred during load balancer ready check")
 		}
 		if cluster.Spec.ControlPlaneEndpoint.Host == "" {
-			return fileList, fmt.Errorf("control plane endpoint is not set")
+			return fileList, errors.New("control plane endpoint is not set")
 		}
 	}
 
 	controlPlaneAvailableInput := ControlPlaneAvailableInput{
 		Cluster:       cluster,
 		InstallConfig: installConfig,
+		Client:        cl,
+		InfraID:       clusterID.InfraID,
 	}
 	if err := i.capiProvider.ControlPlaneAvailable(controlPlaneAvailableInput); err != nil {
 		return fileList, fmt.Errorf("failed provisioning resources after control plane available: %w", err)
@@ -227,7 +230,8 @@ func (i InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 		fileName := fmt.Sprintf("%s-%s-%s.yaml", gvk.Kind, m.GetNamespace(), m.GetName())
 		objData, err := yaml.Marshal(m)
 		if err != nil {
-			return fileList, fmt.Errorf("failed to create infrastructure manifest %s from InstallConfig: %w", fileName, err)
+			errMsg := fmt.Sprintf("failed to create infrastructure manifest %s from InstallConfig", fileName)
+			return fileList, errors.Wrapf(err, errMsg)
 		}
 		fileList = append(fileList, &asset.File{
 			Filename: fileName,
@@ -265,7 +269,9 @@ func (i InfraProvider) ExtractHostAddresses(dir string, config *types.InstallCon
 	return nil
 }
 
-type DefaultCAPIProvider struct{}
+type DefaultCAPIProvider struct {
+	Provider
+}
 
 func (d DefaultCAPIProvider) PreProvision(in PreProvisionInput) error {
 	logrus.Debugf("Default PreProvision: doing nothing")
