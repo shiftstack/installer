@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
@@ -196,10 +194,10 @@ func (i InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 			return fileList, err
 		}
 		if cluster == nil {
-			return fileList, errors.New("error occurred during load balancer ready check")
+			return fileList, fmt.Errorf("error occurred during load balancer ready check")
 		}
 		if cluster.Spec.ControlPlaneEndpoint.Host == "" {
-			return fileList, errors.New("control plane endpoint is not set")
+			return fileList, fmt.Errorf("control plane endpoint is not set")
 		}
 	}
 
@@ -230,8 +228,7 @@ func (i InfraProvider) Provision(dir string, parents asset.Parents) ([]*asset.Fi
 		fileName := fmt.Sprintf("%s-%s-%s.yaml", gvk.Kind, m.GetNamespace(), m.GetName())
 		objData, err := yaml.Marshal(m)
 		if err != nil {
-			errMsg := fmt.Sprintf("failed to create infrastructure manifest %s from InstallConfig", fileName)
-			return fileList, errors.Wrapf(err, errMsg)
+			return fileList, fmt.Errorf("failed to create infrastructure manifest %s from InstallConfig: %w", fileName, err)
 		}
 		fileList = append(fileList, &asset.File{
 			Filename: fileName,
