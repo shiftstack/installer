@@ -2,6 +2,8 @@ module github.com/openshift/installer
 
 go 1.21
 
+replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.5.3
+
 require (
 	cloud.google.com/go/monitoring v1.17.0
 	github.com/AlecAivazis/survey/v2 v2.3.5
@@ -43,8 +45,8 @@ require (
 	github.com/golang/protobuf v1.5.3
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
-	github.com/gophercloud/gophercloud v1.6.0
-	github.com/gophercloud/utils v0.0.0-20230523080330-de873b9cf00d
+	github.com/gophercloud/gophercloud v1.7.0
+	github.com/gophercloud/utils v0.0.0-20231010081019-80377eca5d56
 	github.com/h2non/filetype v1.0.12
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-version v1.6.0
@@ -107,11 +109,11 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
-	sigs.k8s.io/cluster-api v1.5.3
+	sigs.k8s.io/cluster-api v1.6.0
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.0.0-00010101000000-000000000000
 	sigs.k8s.io/cluster-api-provider-azure v0.0.0-00010101000000-000000000000
 	sigs.k8s.io/cluster-api-provider-gcp v1.5.0
-	sigs.k8s.io/cluster-api-provider-openstack v0.8.0
+	sigs.k8s.io/cluster-api-provider-openstack v0.9.0
 	sigs.k8s.io/cluster-api-provider-vsphere v1.9.0
 	sigs.k8s.io/controller-runtime v0.16.3
 	sigs.k8s.io/controller-tools v0.12.0
@@ -156,7 +158,7 @@ require (
 	github.com/evanphx/json-patch v5.7.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.7.0 // indirect
 	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d // indirect
-	github.com/fatih/color v1.15.0 // indirect
+	github.com/fatih/color v1.16.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -207,7 +209,7 @@ require (
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/microsoft/kiota-abstractions-go v0.14.0 // indirect
 	github.com/microsoft/kiota-http-go v0.9.0 // indirect
