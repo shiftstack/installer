@@ -44,7 +44,6 @@ GO_INSTALL := ./scripts/go_install.sh
 # Binaries.
 CONTROLLER_GEN := $(TOOLS_BIN_DIR)/controller-gen
 CONVERSION_GEN := $(TOOLS_BIN_DIR)/conversion-gen
-DEFAULTER_GEN := $(TOOLS_BIN_DIR)/defaulter-gen
 ENVSUBST := $(TOOLS_BIN_DIR)/envsubst
 GINKGO := $(TOOLS_BIN_DIR)/ginkgo
 GOJQ := $(TOOLS_BIN_DIR)/gojq
@@ -52,29 +51,15 @@ GOLANGCI_LINT := $(TOOLS_BIN_DIR)/golangci-lint
 KUSTOMIZE := $(TOOLS_BIN_DIR)/kustomize
 MOCKGEN := $(TOOLS_BIN_DIR)/mockgen
 RELEASE_NOTES := $(TOOLS_BIN_DIR)/release-notes
-
-# Setup-envtest
-SETUP_ENVTEST_VER := v0.0.0-20221201045826-d9912251cd81
-SETUP_ENVTEST_BIN := setup-envtest
-SETUP_ENVTEST := $(abspath $(TOOLS_BIN_DIR)/$(SETUP_ENVTEST_BIN)-$(SETUP_ENVTEST_VER))
-SETUP_ENVTEST_PKG := sigs.k8s.io/controller-runtime/tools/setup-envtest
+SETUP_ENVTEST := $(TOOLS_BIN_DIR)/setup-envtest
 
 # Kubebuilder
-export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.25.0
+export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.28.0
 export KUBEBUILDER_CONTROLPLANE_START_TIMEOUT ?= 60s
 export KUBEBUILDER_CONTROLPLANE_STOP_TIMEOUT ?= 60s
 
 PATH := $(abspath $(TOOLS_BIN_DIR)):$(PATH)
 export PATH
-export DOCKER_CLI_EXPERIMENTAL=enabled
-export DOCKER_BUILDKIT=1
-
-PODMAN ?= 0
-ifeq ($(PODMAN), 1)
-	CONTAINERFILE ?= Containerfile
-else
-	CONTAINERFILE ?= Dockerfile
-endif
 
 # Release variables
 
@@ -135,15 +120,25 @@ endif
 $(ARTIFACTS):
 	mkdir -p $@
 
-ifeq ($(shell go env GOOS),darwin) # Use the darwin/amd64 binary until an arm64 version is available
-  KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env -p path --arch amd64 $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
-else
-  KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
+setup_envtest_extra_args=
+# Use the darwin/amd64 binary until an arm64 version is available
+ifeq ($(shell go env GOOS),darwin)
+	setup_envtest_extra_args += --arch amd64
+endif
+
+# By default setup-envtest will write to $XDG_DATA_HOME, or $HOME/.local/share
+# if that is not defined. Set KUBEBUILDER_ASSETS_DIR to override.
+ifdef KUBEBUILDER_ASSETS_DIR
+	setup_envtest_extra_args += --bin-dir $(KUBEBUILDER_ASSETS_DIR)
 endif
 
 .PHONY: test
 test: $(SETUP_ENVTEST) ## Run tests
-	KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" go test -v ./... $(TEST_ARGS)
+	set -xeuf -o pipefail; \
+	if [ -z "$(KUBEBUILDER_ASSETS)" ]; then \
+		KUBEBUILDER_ASSETS=`$(SETUP_ENVTEST) use --use-env -p path $(setup_envtest_extra_args) $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION)`; \
+	fi; \
+	KUBEBUILDER_ASSETS="$$KUBEBUILDER_ASSETS" go test -v ./... $(TEST_ARGS)
 
 E2E_TEMPLATES_DIR=test/e2e/data/infrastructure-openstack
 E2E_KUSTOMIZE_DIR=test/e2e/data/kustomize
@@ -152,7 +147,7 @@ E2E_NO_ARTIFACT_TEMPLATES_DIR=test/e2e/data/infrastructure-openstack-no-artifact
 
 .PHONY: e2e-templates
 e2e-templates: ## Generate cluster templates for e2e tests
-e2e-templates: $(addprefix $(E2E_TEMPLATES_DIR)/, \
+e2e-templates: $(addprefix $(E2E_NO_ARTIFACT_TEMPLATES_DIR)/, \
 		 cluster-template-v1alpha5.yaml \
 		 cluster-template-v1alpha6.yaml \
 		 cluster-template-md-remediation.yaml \
@@ -160,14 +155,13 @@ e2e-templates: $(addprefix $(E2E_TEMPLATES_DIR)/, \
 		 cluster-template-multi-az.yaml \
 		 cluster-template-multi-network.yaml \
 		 cluster-template-without-lb.yaml \
-		 cluster-template.yaml) \
-		 $(addprefix $(E2E_NO_ARTIFACT_TEMPLATES_DIR)/, \
-		 cluster-template-flatcar.yaml)
+		 cluster-template.yaml \
+		 cluster-template-flatcar.yaml \
+		 cluster-template-k8s-upgrade.yaml)
+# Currently no templates that require CI artifacts
+# $(addprefix $(E2E_TEMPLATES_DIR)/, add-templates-here.yaml) \
 
-$(E2E_TEMPLATES_DIR)/cluster-template.yaml: $(E2E_KUSTOMIZE_DIR)/with-tags $(KUSTOMIZE) FORCE
-	$(KUSTOMIZE) build "$<" > "$@"
-
-$(E2E_TEMPLATES_DIR)/cluster-template-%.yaml: $(E2E_KUSTOMIZE_DIR)/% $(KUSTOMIZE) FORCE
+$(E2E_NO_ARTIFACT_TEMPLATES_DIR)/cluster-template.yaml: $(E2E_KUSTOMIZE_DIR)/with-tags $(KUSTOMIZE) FORCE
 	$(KUSTOMIZE) build "$<" > "$@"
 
 $(E2E_NO_ARTIFACT_TEMPLATES_DIR)/cluster-template-%.yaml: $(E2E_KUSTOMIZE_DIR)/% $(KUSTOMIZE) FORCE
@@ -192,9 +186,9 @@ e2e-image: docker-build
 
 # Pull all the images references in test/e2e/data/e2e_conf.yaml
 test-e2e-image-prerequisites:
-	docker pull gcr.io/k8s-staging-cluster-api/cluster-api-controller:v1.4.1
-	docker pull gcr.io/k8s-staging-cluster-api/kubeadm-bootstrap-controller:v1.4.1
-	docker pull gcr.io/k8s-staging-cluster-api/kubeadm-control-plane-controller:v1.4.1
+	docker pull gcr.io/k8s-staging-cluster-api/cluster-api-controller:v1.6.0
+	docker pull gcr.io/k8s-staging-cluster-api/kubeadm-bootstrap-controller:v1.6.0
+	docker pull gcr.io/k8s-staging-cluster-api/kubeadm-control-plane-controller:v1.6.0
 	docker pull quay.io/jetstack/cert-manager-cainjector:v1.12.1
 	docker pull quay.io/jetstack/cert-manager-webhook:v1.12.1
 	docker pull quay.io/jetstack/cert-manager-controller:v1.12.1
@@ -224,12 +218,6 @@ managers:
 .PHONY: manager-openstack-infrastructure
 manager-openstack-infrastructure: ## Build manager binary.
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS} -extldflags '-static'" -o $(BIN_DIR)/manager .
-
-$(SETUP_ENVTEST): # Build setup-envtest from tools folder.
-	GOBIN=$(abspath $(TOOLS_BIN_DIR)) $(GO_INSTALL) $(SETUP_ENVTEST_PKG) $(SETUP_ENVTEST_BIN) $(SETUP_ENVTEST_VER)
-
-.PHONY: $(SETUP_ENVTEST_BIN)
-	$(SETUP_ENVTEST_BIN): $(SETUP_ENVTEST) ## Build a local copy of setup-envtest.
 
 ## --------------------------------------
 ##@ Linting
@@ -262,7 +250,7 @@ generate: ## Generate code
 
 .PHONY: generate-go
 generate-go: $(MOCKGEN)
-	$(MAKE) -B $(CONTROLLER_GEN) $(CONVERSION_GEN) $(DEFAULTER_GEN)
+	$(MAKE) -B $(CONTROLLER_GEN) $(CONVERSION_GEN)
 	$(CONTROLLER_GEN) \
 		paths=./api/... \
 		object:headerFile=./hack/boilerplate/boilerplate.generatego.txt
@@ -283,6 +271,7 @@ generate-manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 		output:webhook:dir=$(WEBHOOK_ROOT) \
 		webhook
 	$(CONTROLLER_GEN) \
+		paths=./ \
 		paths=./controllers/... \
 		output:rbac:dir=$(RBAC_ROOT) \
 		rbac:roleName=manager-role
@@ -292,18 +281,12 @@ generate-manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 ## --------------------------------------
 
 .PHONY: docker-build
-docker-build: docker-pull-prerequisites ## Build the docker image for controller-manager
-	docker build -f $(CONTAINERFILE) --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg LDFLAGS="$(LDFLAGS)" . -t $(CONTROLLER_IMG_TAG)
+docker-build: ## Build the docker image for controller-manager
+	docker build -f Dockerfile --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg LDFLAGS="$(LDFLAGS)" . -t $(CONTROLLER_IMG_TAG)
 
 .PHONY: docker-push
 docker-push: ## Push the docker image
 	docker push $(CONTROLLER_IMG_TAG)
-
-.PHONY: docker-pull-prerequisites
-docker-pull-prerequisites:
-	[ "$(PODMAN)" -eq 0 ] && docker pull docker.io/docker/dockerfile:1.1-experimental
-	docker pull docker.io/library/golang:$(GOLANG_VERSION)
-	docker pull gcr.io/distroless/static:latest
 
 ## --------------------------------------
 ##@ Docker — All ARCH

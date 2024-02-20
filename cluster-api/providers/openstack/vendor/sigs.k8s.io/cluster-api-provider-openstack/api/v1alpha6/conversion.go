@@ -60,13 +60,12 @@ func restorev1alpha7MachineSpec(previous *infrav1.OpenStackMachineSpec, dst *inf
 	// PropagateUplinkStatus has been added in v1alpha7.
 	// We restore the whole Ports since they are anyway immutable.
 	dst.Ports = previous.Ports
+	dst.AdditionalBlockDevices = previous.AdditionalBlockDevices
 }
 
 func restorev1alpha7Bastion(previous **infrav1.Bastion, dst **infrav1.Bastion) {
-	// PropagateUplinkStatus has been added in v1alpha7.
-	// We restore the whole Ports since they are anyway immutable.
-	if *previous != nil && (*previous).Instance.Ports != nil && *dst != nil && (*dst).Instance.Ports != nil {
-		(*dst).Instance.Ports = (*previous).Instance.Ports
+	if *previous != nil && *dst != nil {
+		restorev1alpha7MachineSpec(&(*previous).Instance, &(*dst).Instance)
 	}
 }
 
@@ -122,6 +121,11 @@ var v1alpha7OpenStackClusterRestorer = conversion.RestorerFor[*infrav1.OpenStack
 	"router": conversion.UnconditionalFieldRestorer[*infrav1.OpenStackCluster, *infrav1.RouterFilter]{
 		GetField: func(c *infrav1.OpenStackCluster) **infrav1.RouterFilter {
 			return &c.Spec.Router
+		},
+	},
+	"networkMtu": conversion.UnconditionalFieldRestorer[*infrav1.OpenStackCluster, int]{
+		GetField: func(c *infrav1.OpenStackCluster) *int {
+			return &c.Spec.NetworkMTU
 		},
 	},
 	"bastion": conversion.HashedFieldRestorer[*infrav1.OpenStackCluster, *infrav1.Bastion]{
@@ -189,6 +193,11 @@ var v1alpha7OpenStackClusterTemplateRestorer = conversion.RestorerFor[*infrav1.O
 	"router": conversion.UnconditionalFieldRestorer[*infrav1.OpenStackClusterTemplate, *infrav1.RouterFilter]{
 		GetField: func(c *infrav1.OpenStackClusterTemplate) **infrav1.RouterFilter {
 			return &c.Spec.Template.Spec.Router
+		},
+	},
+	"networkMtu": conversion.UnconditionalFieldRestorer[*infrav1.OpenStackClusterTemplate, int]{
+		GetField: func(c *infrav1.OpenStackClusterTemplate) *int {
+			return &c.Spec.Template.Spec.NetworkMTU
 		},
 	},
 	"bastion": conversion.HashedFieldRestorer[*infrav1.OpenStackClusterTemplate, *infrav1.Bastion]{
@@ -645,4 +654,8 @@ func Convert_v1alpha6_OpenStackClusterStatus_To_v1alpha7_OpenStackClusterStatus(
 	}
 
 	return nil
+}
+
+func Convert_v1alpha7_OpenStackMachineSpec_To_v1alpha6_OpenStackMachineSpec(in *infrav1.OpenStackMachineSpec, out *OpenStackMachineSpec, s apiconversion.Scope) error {
+	return autoConvert_v1alpha7_OpenStackMachineSpec_To_v1alpha6_OpenStackMachineSpec(in, out, s)
 }
