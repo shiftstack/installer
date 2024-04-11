@@ -46,6 +46,17 @@ fill_install_config() {
 		template="$1" \
 		pull_secret="'"'{"auths":{"registry.svc.ci.openshift.org":{"auth":"QW4gYWN0dWFsIHB1bGwgc2VjcmV0IGlzIG5vdCBuZWNlc3NhcnkK"}}}'"'"
 
+	if [[ -n "$FEATURE_SET" ]]; then
+		echo "featureSet: '${FEATURE_SET}'"
+	fi
+	if [[ -n "$FEATURE_GATES" ]]; then
+		echo 'featureGates:'
+		IFS=',' read -ra gates <<< "$FEATURE_GATES"
+		for gate in "${gates[@]}"; do
+			echo "- ${gate}"
+		done
+	fi
+
 	sed '
 		s|${\?OS_CLOUD}\?|'"${os_cloud}"'|;
 		s|${\?EXTERNAL_NETWORK}\?|'"${external_network}"'|;
